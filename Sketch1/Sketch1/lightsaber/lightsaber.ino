@@ -118,18 +118,21 @@
 #include <Arduino.h>
 #include <EEPROM.h>
 
-#ifdef TEENSYDUINO
+//#ifdef TEENSYDUINO
 #include <i2s.h>
 #include <i2s_reg.h>
-#include <usb_dev.h>
-#include <kinetis.h>
-#include <i2c_t3.h>
+//Not deving
+//#include <usb_dev.h>
+//K20 CPU Specific
+//#include <kinetis.h>
+//#include <i2c_t3.h>
 #include <SD.h>
-#else
+//#else
 #include <Wire.h>
-#include <FS.h>
+//Already Included apparently
+//#include <FS.h>
 #define digitalWriteFast digitalWrite
-#endif
+//#endif
 
 #include <SPI.h>
 #include <math.h>
@@ -1039,169 +1042,169 @@ public:
 
 #define PDB_CONFIG (PDB_SC_TRGSEL(15) | PDB_SC_PDBEN | PDB_SC_CONT | PDB_SC_PDBIE | PDB_SC_DMAEN)
 
-class DAC : CommandParser {
-public:
-  DAC() {
-    dma.begin(true); // Allocate the DMA channel first
-
-#ifdef USE_I2S
-    SIM_SCGC6 |= SIM_SCGC6_I2S;
-    SIM_SCGC7 |= SIM_SCGC7_DMA;
-    SIM_SCGC6 |= SIM_SCGC6_DMAMUX;
-
-    // enable MCLK output
-    I2S0_MCR = I2S_MCR_MICS(MCLK_SRC) | I2S_MCR_MOE;
-    while (I2S0_MCR & I2S_MCR_DUF) ;
-    I2S0_MDR = I2S_MDR_FRACT((MCLK_MULT-1)) | I2S_MDR_DIVIDE((MCLK_DIV-1));
-
-    // configure transmitter
-    I2S0_TMR = 0;
-    I2S0_TCR1 = I2S_TCR1_TFW(1);  // watermark at half fifo size
-    I2S0_TCR2 = I2S_TCR2_SYNC(0) | I2S_TCR2_BCP | I2S_TCR2_MSEL(1)
-      | I2S_TCR2_BCD | I2S_TCR2_DIV(3);
-    I2S0_TCR3 = I2S_TCR3_TCE;
-    I2S0_TCR4 = I2S_TCR4_FRSZ(1) | I2S_TCR4_SYWD(15) | I2S_TCR4_MF
-      | I2S_TCR4_FSE | I2S_TCR4_FSP | I2S_TCR4_FSD;
-    I2S0_TCR5 = I2S_TCR5_WNW(15) | I2S_TCR5_W0W(15) | I2S_TCR5_FBT(15);
-
-    // configure pin mux for 3 clock signals
-    CORE_PIN23_CONFIG = PORT_PCR_MUX(6); // pin 23, PTC2, I2S0_TX_FS (LRCLK)
-    CORE_PIN9_CONFIG  = PORT_PCR_MUX(6); // pin  9, PTC3, I2S0_TX_BCLK
-    CORE_PIN22_CONFIG = PORT_PCR_MUX(6); // pin 22, PTC1, I2S0_TXD0
-
-#if defined(KINETISK)
-    dma.TCD->SADDR = dac_dma_buffer;
-    dma.TCD->SOFF = 2;
-    dma.TCD->ATTR = DMA_TCD_ATTR_SSIZE(1) | DMA_TCD_ATTR_DSIZE(1);
-    dma.TCD->NBYTES_MLNO = 2;
-    dma.TCD->SLAST = -sizeof(dac_dma_buffer);
-    dma.TCD->DADDR = &I2S0_TDR0;
-    dma.TCD->DOFF = 0;
-    dma.TCD->CITER_ELINKNO = sizeof(dac_dma_buffer) / 2;
-    dma.TCD->DLASTSGA = 0;
-    dma.TCD->BITER_ELINKNO = sizeof(dac_dma_buffer) / 2;
-    dma.TCD->CSR = DMA_TCD_CSR_INTHALF | DMA_TCD_CSR_INTMAJOR;
-#endif
-    dma.triggerAtHardwareEvent(DMAMUX_SOURCE_I2S0_TX);
-    dma.enable();
-    
-    I2S0_TCSR = I2S_TCSR_SR;
-    I2S0_TCSR = I2S_TCSR_TE | I2S_TCSR_BCE | I2S_TCSR_FRDE;
-
-#else   // USE_I2S
-
-    SIM_SCGC2 |= SIM_SCGC2_DAC0;
-    DAC0_C0 = DAC_C0_DACEN;
-#ifdef LOUD
-    DAC0_C0 |= DAC_C0_DACRFS;  // 3.3V, much louder
-#endif
-    // This would cause a click, but the amp is not on yet...
-    *(int16_t *)&(DAC0_DAT0L) = 2048;
-
-    // set the programmable delay block to trigger DMA requests
-    SIM_SCGC6 |= SIM_SCGC6_PDB;
-    PDB0_IDLY = 1;
-    PDB0_MOD = F_BUS / AUDIO_RATE;
-    PDB0_SC = PDB_CONFIG | PDB_SC_LDOK;
-    PDB0_SC = PDB_CONFIG | PDB_SC_SWTRIG;
-    PDB0_CH0C1 = 0x0101;
-
-    dma.TCD->SADDR = dac_dma_buffer;
-    dma.TCD->SOFF = 2;
-    dma.TCD->ATTR = DMA_TCD_ATTR_SSIZE(1) | DMA_TCD_ATTR_DSIZE(1);
-    dma.TCD->NBYTES_MLNO = 2;
-    dma.TCD->SLAST = -sizeof(dac_dma_buffer);
-    dma.TCD->DADDR = &DAC0_DAT0L;
-    dma.TCD->DOFF = 0;
-    dma.TCD->CITER_ELINKNO = NELEM(dac_dma_buffer);
-    dma.TCD->DLASTSGA = 0;
-    dma.TCD->BITER_ELINKNO = NELEM(dac_dma_buffer);
-    dma.TCD->CSR = DMA_TCD_CSR_INTHALF | DMA_TCD_CSR_INTMAJOR;
-    dma.triggerAtHardwareEvent(DMAMUX_SOURCE_PDB);
-    dma.enable();
-#endif
-    dma.attachInterrupt(isr);
-  }
-
-  bool Parse(const char* cmd, const char* arg) override {
-    if (!strcmp(cmd, "dacbuf")) {
-      for (size_t i = 0; i < NELEM(dac_dma_buffer); i++) {
-        STDOUT.print(dac_dma_buffer[i] - 2048);
-        if ((i & 0xf) == 0xf)
-          STDOUT.println("");
-        else
-          STDOUT.print(" ");
-      }
-      STDOUT.println("");
-      return true;
-    }
-    return false;
-  }
-
-  bool isSilent() {
-     for (size_t i = 0; i < NELEM(dac_dma_buffer); i++)
-       if (dac_dma_buffer[i] != dac_dma_buffer[0])
-         return false;
-     return true;
-  }
-
-  void Help() override {
-    STDOUT.println(" dacbuf - print the current contents of the dac buffer");
-  }
-
-  void SetStream(AudioStream* stream) {
-    stream_ = stream;
-  }
-
-private:
-  // Interrupt handler.
-  // Fills the dma buffer with new sample data.
-  static void isr(void) {
-    ScopedCycleCounter cc(audio_dma_interrupt_cycles);
-    int16_t *dest, *end;
-    uint32_t saddr;
-
-    saddr = (uint32_t)(dma.TCD->SADDR);
-    dma.clearInterrupt();
-    if (saddr < (uint32_t)dac_dma_buffer + sizeof(dac_dma_buffer) / 2) {
-      // DMA is transmitting the first half of the buffer
-      // so we must fill the second half
-      dest = (int16_t *)&dac_dma_buffer[AUDIO_BUFFER_SIZE*CHANNELS];
-      end = (int16_t *)&dac_dma_buffer[AUDIO_BUFFER_SIZE*2*CHANNELS];
-    } else {
-      // DMA is transmitting the second half of the buffer
-      // so we must fill the first half
-      dest = (int16_t *)dac_dma_buffer;
-      end = (int16_t *)&dac_dma_buffer[AUDIO_BUFFER_SIZE*CHANNELS];
-    }
-    AudioStream *stream = stream_;
-    int16_t data[AUDIO_BUFFER_SIZE];
-    int n = 0;
-    if (stream) {
-      n = stream->read(data, (end-dest) / CHANNELS);
-    }
-    while (n < AUDIO_BUFFER_SIZE) data[n++] = 0;
-    for (int i = 0; i < n; i++) {
-#ifdef USE_I2S
-      // Duplicate sample to left and right channel.
-      *(dest++) = data[i];
-      *(dest++) = data[i];
-#else
-      *(dest++) = (((uint16_t*)data)[i] + 32768) >> 4;
-#endif
-    }
-  }
-
-  DMAMEM static uint16_t dac_dma_buffer[AUDIO_BUFFER_SIZE*2*CHANNELS];
-  static AudioStream * volatile stream_;
-  static DMAChannel dma;
-};
-
-DMAChannel DAC::dma(false);
-AudioStream * volatile DAC::stream_ = nullptr;
-DMAMEM uint16_t DAC::dac_dma_buffer[AUDIO_BUFFER_SIZE*2*CHANNELS];
-
-DAC dac;
+//class DAC : CommandParser {
+//public:
+//  DAC() {
+//    dma.begin(true); // Allocate the DMA channel first
+//
+//#ifdef USE_I2S
+//    SIM_SCGC6 |= SIM_SCGC6_I2S;
+//    SIM_SCGC7 |= SIM_SCGC7_DMA;
+//    SIM_SCGC6 |= SIM_SCGC6_DMAMUX;
+//
+//    // enable MCLK output
+//    I2S0_MCR = I2S_MCR_MICS(MCLK_SRC) | I2S_MCR_MOE;
+//    while (I2S0_MCR & I2S_MCR_DUF) ;
+//    I2S0_MDR = I2S_MDR_FRACT((MCLK_MULT-1)) | I2S_MDR_DIVIDE((MCLK_DIV-1));
+//
+//    // configure transmitter
+//    I2S0_TMR = 0;
+//    I2S0_TCR1 = I2S_TCR1_TFW(1);  // watermark at half fifo size
+//    I2S0_TCR2 = I2S_TCR2_SYNC(0) | I2S_TCR2_BCP | I2S_TCR2_MSEL(1)
+//      | I2S_TCR2_BCD | I2S_TCR2_DIV(3);
+//    I2S0_TCR3 = I2S_TCR3_TCE;
+//    I2S0_TCR4 = I2S_TCR4_FRSZ(1) | I2S_TCR4_SYWD(15) | I2S_TCR4_MF
+//      | I2S_TCR4_FSE | I2S_TCR4_FSP | I2S_TCR4_FSD;
+//    I2S0_TCR5 = I2S_TCR5_WNW(15) | I2S_TCR5_W0W(15) | I2S_TCR5_FBT(15);
+//
+//    // configure pin mux for 3 clock signals
+//    CORE_PIN23_CONFIG = PORT_PCR_MUX(6); // pin 23, PTC2, I2S0_TX_FS (LRCLK)
+//    CORE_PIN9_CONFIG  = PORT_PCR_MUX(6); // pin  9, PTC3, I2S0_TX_BCLK
+//    CORE_PIN22_CONFIG = PORT_PCR_MUX(6); // pin 22, PTC1, I2S0_TXD0
+//
+//#if defined(KINETISK)
+//    dma.TCD->SADDR = dac_dma_buffer;
+//    dma.TCD->SOFF = 2;
+//    dma.TCD->ATTR = DMA_TCD_ATTR_SSIZE(1) | DMA_TCD_ATTR_DSIZE(1);
+//    dma.TCD->NBYTES_MLNO = 2;
+//    dma.TCD->SLAST = -sizeof(dac_dma_buffer);
+//    dma.TCD->DADDR = &I2S0_TDR0;
+//    dma.TCD->DOFF = 0;
+//    dma.TCD->CITER_ELINKNO = sizeof(dac_dma_buffer) / 2;
+//    dma.TCD->DLASTSGA = 0;
+//    dma.TCD->BITER_ELINKNO = sizeof(dac_dma_buffer) / 2;
+//    dma.TCD->CSR = DMA_TCD_CSR_INTHALF | DMA_TCD_CSR_INTMAJOR;
+//#endif
+//    dma.triggerAtHardwareEvent(DMAMUX_SOURCE_I2S0_TX);
+//    dma.enable();
+//    
+//    I2S0_TCSR = I2S_TCSR_SR;
+//    I2S0_TCSR = I2S_TCSR_TE | I2S_TCSR_BCE | I2S_TCSR_FRDE;
+//
+//#else   // USE_I2S
+//
+//    SIM_SCGC2 |= SIM_SCGC2_DAC0;
+//    DAC0_C0 = DAC_C0_DACEN;
+//#ifdef LOUD
+//    DAC0_C0 |= DAC_C0_DACRFS;  // 3.3V, much louder
+//#endif
+//    // This would cause a click, but the amp is not on yet...
+//    *(int16_t *)&(DAC0_DAT0L) = 2048;
+//
+//    // set the programmable delay block to trigger DMA requests
+//    SIM_SCGC6 |= SIM_SCGC6_PDB;
+//    PDB0_IDLY = 1;
+//    PDB0_MOD = F_BUS / AUDIO_RATE;
+//    PDB0_SC = PDB_CONFIG | PDB_SC_LDOK;
+//    PDB0_SC = PDB_CONFIG | PDB_SC_SWTRIG;
+//    PDB0_CH0C1 = 0x0101;
+//
+//    dma.TCD->SADDR = dac_dma_buffer;
+//    dma.TCD->SOFF = 2;
+//    dma.TCD->ATTR = DMA_TCD_ATTR_SSIZE(1) | DMA_TCD_ATTR_DSIZE(1);
+//    dma.TCD->NBYTES_MLNO = 2;
+//    dma.TCD->SLAST = -sizeof(dac_dma_buffer);
+//    dma.TCD->DADDR = &DAC0_DAT0L;
+//    dma.TCD->DOFF = 0;
+//    dma.TCD->CITER_ELINKNO = NELEM(dac_dma_buffer);
+//    dma.TCD->DLASTSGA = 0;
+//    dma.TCD->BITER_ELINKNO = NELEM(dac_dma_buffer);
+//    dma.TCD->CSR = DMA_TCD_CSR_INTHALF | DMA_TCD_CSR_INTMAJOR;
+//    dma.triggerAtHardwareEvent(DMAMUX_SOURCE_PDB);
+//    dma.enable();
+//#endif
+//    dma.attachInterrupt(isr);
+//  }
+//
+//  bool Parse(const char* cmd, const char* arg) override {
+//    if (!strcmp(cmd, "dacbuf")) {
+//      for (size_t i = 0; i < NELEM(dac_dma_buffer); i++) {
+//        STDOUT.print(dac_dma_buffer[i] - 2048);
+//        if ((i & 0xf) == 0xf)
+//          STDOUT.println("");
+//        else
+//          STDOUT.print(" ");
+//      }
+//      STDOUT.println("");
+//      return true;
+//    }
+//    return false;
+//  }
+//
+//  bool isSilent() {
+//     for (size_t i = 0; i < NELEM(dac_dma_buffer); i++)
+//       if (dac_dma_buffer[i] != dac_dma_buffer[0])
+//         return false;
+//     return true;
+//  }
+//
+//  void Help() override {
+//    STDOUT.println(" dacbuf - print the current contents of the dac buffer");
+//  }
+//
+//  void SetStream(AudioStream* stream) {
+//    stream_ = stream;
+//  }
+//
+//private:
+//  // Interrupt handler.
+//  // Fills the dma buffer with new sample data.
+//  static void isr(void) {
+//    ScopedCycleCounter cc(audio_dma_interrupt_cycles);
+//    int16_t *dest, *end;
+//    uint32_t saddr;
+//
+//    saddr = (uint32_t)(dma.TCD->SADDR);
+//    dma.clearInterrupt();
+//    if (saddr < (uint32_t)dac_dma_buffer + sizeof(dac_dma_buffer) / 2) {
+//      // DMA is transmitting the first half of the buffer
+//      // so we must fill the second half
+//      dest = (int16_t *)&dac_dma_buffer[AUDIO_BUFFER_SIZE*CHANNELS];
+//      end = (int16_t *)&dac_dma_buffer[AUDIO_BUFFER_SIZE*2*CHANNELS];
+//    } else {
+//      // DMA is transmitting the second half of the buffer
+//      // so we must fill the first half
+//      dest = (int16_t *)dac_dma_buffer;
+//      end = (int16_t *)&dac_dma_buffer[AUDIO_BUFFER_SIZE*CHANNELS];
+//    }
+//    AudioStream *stream = stream_;
+//    int16_t data[AUDIO_BUFFER_SIZE];
+//    int n = 0;
+//    if (stream) {
+//      n = stream->read(data, (end-dest) / CHANNELS);
+//    }
+//    while (n < AUDIO_BUFFER_SIZE) data[n++] = 0;
+//    for (int i = 0; i < n; i++) {
+//#ifdef USE_I2S
+//      // Duplicate sample to left and right channel.
+//      *(dest++) = data[i];
+//      *(dest++) = data[i];
+//#else
+//      *(dest++) = (((uint16_t*)data)[i] + 32768) >> 4;
+//#endif
+//    }
+//  }
+//
+//  DMAMEM static uint16_t dac_dma_buffer[AUDIO_BUFFER_SIZE*2*CHANNELS];
+//  static AudioStream * volatile stream_;
+//  static DMAChannel dma;
+//};
+//
+//DMAChannel DAC::dma(false);
+//AudioStream * volatile DAC::stream_ = nullptr;
+//DMAMEM uint16_t DAC::dac_dma_buffer[AUDIO_BUFFER_SIZE*2*CHANNELS];
+//
+//DAC dac;
 
 // Audio compressor, takes N input channels, sums them and divides the
 // result by the square root of the average volume.
@@ -1270,8 +1273,8 @@ public:
         vol_ = ((vol_ + abs(v)) * 255) >> 8;
         v2 = v * volume_ / (my_sqrt(vol_) + 100);
         data[i] = clamptoi16(v2);
-        peak_sum_ = max(abs(v), peak_sum_);
-        peak_ = max(abs(v2), peak_);
+        peak_sum_ = _max(abs(v), peak_sum_);
+        peak_ = _max(abs(v2), peak_);
       }
       data += to_do;
       elements -= to_do;
@@ -1864,7 +1867,7 @@ private:
     for (int i = 0; i < 50; i++) {
       size_t max_space = 0;
       for (AudioStreamWork *d = data_streams; d; d=d->next_)
-        max_space = max(max_space, d->space_available());
+        max_space = _max(max_space, d->space_available());
       if (max_space == 0) break;
       for (AudioStreamWork *d = data_streams; d; d=d->next_) {
         if (d->space_available() >= max_space)
@@ -2027,7 +2030,7 @@ bool endswith(const char *postfix, const char* x) {
   return true;
 }
 
-#ifdef TEENSYDUINO
+//#ifdef TEENSYDUINO
 class LSFS {
 public:
   typedef File FILE;
@@ -2079,72 +2082,72 @@ public:
     File f_;
   };
 };
-#else
-class LSFS {
-public:
-  typedef File FILE;
-  static bool Begin() {
-    return DOSFS.begin() && DOSFS.check();
-  }
-  static bool Exists(const char* path) {
-    return DOSFS.exists(path);
-  }
-  static File Open(const char* path) {
-    return DOSFS.open(path, "r");
-  }
-  static File OpenForWrite(const char* path) {
-    return DOSFS.open(path, "wc");
-  }
-  class Iterator {
-  public:
-    explicit Iterator(const char* path) {
-      char filename[F_MAXPATH];
-
-      strcpy(_path, path);
-
-      if (path[strlen(path)-1] != '/')  
-        strcat(_path, "/");
-
-      strcpy(filename, _path);
-      strcat(filename, "*.*");
-
-      if (f_findfirst(filename, &_find) != F_NO_ERROR) {
-        _find.find_clsno = 0x0fffffff;
-      }
-    }
-    explicit Iterator(Iterator& other) {
-      char filename[F_MAXPATH];
-
-      strcpy(_path, other._path);
-      strcat(_path, other.name());
-
-      if (_path[strlen(_path)-1] != '/')  
-        strcat(_path, "/");
-
-      strcpy(filename, _path);
-      strcat(filename, "*.*");
-
-      if (f_findfirst(filename, &_find) != F_NO_ERROR) {
-        _find.find_clsno = 0x0fffffff;
-      }
-    }
-
-    void operator++() {
-      if (f_findnext(&_find) != F_NO_ERROR) {
-        _find.find_clsno = 0x0fffffff;
-      }
-    }
-    operator bool() { return _find.find_clsno != 0x0fffffff; }
-    bool isdir() { return _find.attr & F_ATTR_DIR; }
-    const char* name() { return _find.filename; }
-    size_t size() { return _find.filesize; }
-    
-  private:
-    char _path[F_MAXPATH];
-    F_FIND _find;
-  };
-};
-#endif
+//#else
+//class LSFS {
+//public:
+//  typedef File FILE;
+//  static bool Begin() {
+//    return DOSFS.begin() && DOSFS.check();
+//  }
+//  static bool Exists(const char* path) {
+//    return DOSFS.exists(path);
+//  }
+//  static File Open(const char* path) {
+//    return DOSFS.open(path, "r");
+//  }
+//  static File OpenForWrite(const char* path) {
+//    return DOSFS.open(path, "wc");
+//  }
+//  class Iterator {
+//  public:
+//    explicit Iterator(const char* path) {
+//      char filename[F_MAXPATH];
+//
+//      strcpy(_path, path);
+//
+//      if (path[strlen(path)-1] != '/')  
+//        strcat(_path, "/");
+//
+//      strcpy(filename, _path);
+//      strcat(filename, "*.*");
+//
+//      if (f_findfirst(filename, &_find) != F_NO_ERROR) {
+//        _find.find_clsno = 0x0fffffff;
+//      }
+//    }
+//    explicit Iterator(Iterator& other) {
+//      char filename[F_MAXPATH];
+//
+//      strcpy(_path, other._path);
+//      strcat(_path, other.name());
+//
+//      if (_path[strlen(_path)-1] != '/')  
+//        strcat(_path, "/");
+//
+//      strcpy(filename, _path);
+//      strcat(filename, "*.*");
+//
+//      if (f_findfirst(filename, &_find) != F_NO_ERROR) {
+//        _find.find_clsno = 0x0fffffff;
+//      }
+//    }
+//
+//    void operator++() {
+//      if (f_findnext(&_find) != F_NO_ERROR) {
+//        _find.find_clsno = 0x0fffffff;
+//      }
+//    }
+//    operator bool() { return _find.find_clsno != 0x0fffffff; }
+//    bool isdir() { return _find.attr & F_ATTR_DIR; }
+//    const char* name() { return _find.filename; }
+//    size_t size() { return _find.filesize; }
+//    
+//  private:
+//    char _path[F_MAXPATH];
+//    F_FIND _find;
+//  };
+//};
+//#endif
 
 char current_directory[128];
 
@@ -2206,7 +2209,7 @@ class Effect {
       char *end;
       n = strtol(rest, &end, 0);
       if (n <= 0) return;
-      max_file_ = max(max_file_, n);
+      max_file_ = _max(max_file_, n);
       min_file_ = _min(min_file_, n);
       if (*rest == '0') {
         digits_ = end - rest;
@@ -2900,7 +2903,7 @@ public:
     volume_.set_speed(speed);
   }
   void set_fade_time(float t) {
-    set_speed(max(1, (int)(kMaxVolume / t / AUDIO_RATE)));
+    set_speed(_max(1, (int)(kMaxVolume / t / AUDIO_RATE)));
   }
   bool isOff() const {
     return volume_.isConstant() && volume_.value() == 0;
@@ -3063,7 +3066,7 @@ public:
   }
 
   void set_crossover_time(float t) {
-    fade_speed_ = max(1, (int)(32768 / t / AUDIO_RATE));
+    fade_speed_ = _max(1, (int)(32768 / t / AUDIO_RATE));
 #if 0
     STDOUT.print("FADE SPEED: ");
     STDOUT.println(fade_speed_);
@@ -3548,8 +3551,8 @@ public:
     float blend = c * gyro.z + s * gyro.y;
     blend = clamp(blend / 150.0, -1.0, 1.0);
     float vol = 0.99 + clamp(speed/200.0, 0.0, 2.3);
-    float low = max(0, blend);
-    float high = max(0, -blend);
+    float low = _max(0, blend);
+    float high = _max(0, -blend);
     float hum = 1.0 - abs(blend);
 
     delegate_->SetHumVolume(vol * hum);
@@ -4369,7 +4372,7 @@ public:
     float pos = (volts - min_volts) * num_leds / (max_volts - min_volts);
     int p = pos * 32;
     for (int i = 0; i < num_leds; i++) {
-      blade->set(i, Color16(Color8().mix(c, max(0, 256 - abs(p - i * 32)))));
+      blade->set(i, Color16(Color8().mix(c, _max(0, 256 - abs(p - i * 32)))));
     }
   };
 
@@ -4706,8 +4709,8 @@ public:
   }
   OverDriveColor getColor(int led) {
     Color16 c(max(0, (sin_table[((m * 3 + led * 50)) & 0x3ff] << 2)),
-              max(0, (sin_table[((m * 3 + led * 50 + 1024 / 3)) & 0x3ff] << 2)),
-              max(0, (sin_table[((m * 3 + led * 50 + 1024 * 2 / 3)) & 0x3ff] << 2)));
+              _max(0, (sin_table[((m * 3 + led * 50 + 1024 / 3)) & 0x3ff] << 2)),
+              _max(0, (sin_table[((m * 3 + led * 50 + 1024 * 2 / 3)) & 0x3ff] << 2)));
     OverDriveColor ret;
     ret.c = c;
     ret.overdrive = false;
@@ -5047,7 +5050,7 @@ public:
         if (extension == 0.0)
           blade->allow_disable();
       extension -= delta / (IN_MILLIS * 1000.0);
-      extension = max(extension, 0.0f);
+      extension = _max(extension, 0.0f);
     }
     thres = extension * blade->num_leds() * 256;
   }
@@ -5086,7 +5089,7 @@ public:
     } else {
       if (extension == 0.0) blade->allow_disable();
       extension -= delta / (IN_MILLIS * 1000.0);
-      extension = max(extension, 0.0f);
+      extension = _max(extension, 0.0f);
     }
     thres = extension * (blade->num_leds() + 4) * 256;
   }
@@ -7591,7 +7594,7 @@ protected:
       max_ = 0;
     } else {
       min_ = _min(value, min_);
-      max_ = max(value, max_);
+      max_ = _max(value, max_);
     }
     is_pushed_ = value > threshold_;
   }
@@ -7897,7 +7900,7 @@ public:
   static const char* response_footer() { return ""; }
 };
 
-class Serial3Adapter {
+/*class Serial3Adapter {
 public:
   static void begin() { Serial3.begin(115200); }
   static bool Connected() { return true; }
@@ -7905,7 +7908,7 @@ public:
   static Stream& stream() { return Serial3; }
   static const char* response_header() { return "-+=BEGIN_OUTPUT=+-\n"; }
   static const char* response_footer() { return "-+=END_OUTPUT=+-\n"; }
-};
+};*/
 
 // Command-line parser. Easiest way to use it is to start the arduino
 // serial monitor.
@@ -8302,7 +8305,7 @@ public:
   void Draw(const Glyph& glyph, int x, int y) {
     x += glyph.xoffset;
     y += glyph.yoffset;
-    int begin = max(0, -x);
+    int begin = _max(0, -x);
     int end = _min(glyph.columns, WIDTH - x);
     uint32_t *pos = frame_buffer_ + x;
     if (y > 0) {
